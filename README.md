@@ -4,7 +4,7 @@ A **Flutter-based** EV charging station finder app that helps users locate **ele
 Users can **sign up/login** securely using **Supabase authentication** and search for stations with **Google Places API**.  
 
 ---
-![Thumbnail](assets/images/screenshot.png)
+![Thumbnail](assets/images/thumbnail.png)
 
 ## 📌 **Features**
 
