@@ -83,6 +83,20 @@ Never commit real keys.
   flutter run
   ```
 
+## 🗄️ Supabase Setup (community reports)
+
+The "Is it working?" community reliability feature stores crowd-sourced
+station reports in Supabase. Apply the database schema once:
+
+- **Dashboard:** open your project → SQL Editor → paste the contents of
+  `supabase/migrations/20260723000000_station_reports.sql` → Run.
+- **CLI:** `supabase db push`
+
+This creates the `station_reports` table with Row Level Security (each user can
+only touch their own report) and a `get_station_status_summary` function that
+exposes aggregate counts only. The feature degrades gracefully if the migration
+hasn't been applied yet.
+
 
 🤝  **Contributing**
 
