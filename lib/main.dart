@@ -1,18 +1,28 @@
-import 'package:ev_app/const/constants.dart';
+import 'package:ev_app/const/env.dart';
 import 'package:ev_app/screens/home_screen.dart';
 import 'package:ev_app/screens/login_screen.dart';
 import 'package:ev_app/screens/registration_screen.dart';
 import 'package:ev_app/screens/splash_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  /// Initialize Supabase with your unique URL and anon key
+  /// Load secrets from the git-ignored `.env` file (see `.env.example`).
+  /// Tolerant of a missing file so the app still boots during setup.
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (_) {
+    // No .env bundled — Env.* getters will return empty strings.
+  }
+
+  /// Initialize Supabase with credentials from the environment.
   await Supabase.initialize(
-      url: supabaseUrl, // Replace with your Supabase project URL.
-      anonKey: supabaseAnonKey);
+    url: Env.supabaseUrl,
+    anonKey: Env.supabaseAnonKey,
+  );
 
   runApp(const MyApp());
 }
@@ -29,7 +39,7 @@ class MyApp extends StatelessWidget {
         '/': (context) => const SplashScreen(),
         '/login': (context) => LoginScreen(),
         '/registration': (context) => RegistrationScreen(),
-        '/home': (context) => const HomePage(), // Ensure HomeScreen is defined
+        '/home': (context) => const HomePage(),
       },
     );
   }
