@@ -8,7 +8,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:ev_app/models/charging_station_details.dart';
+import 'package:ev_app/services/open_charge_map_service.dart';
 import 'package:ev_app/services/places_services.dart';
+import 'package:ev_app/services/favorites_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:ev_app/widgets/places_autocomplete.dart';
 
@@ -25,7 +27,14 @@ class _HomePageState extends State<HomePage> {
   final Location _locationService = Location();
   final Set<Marker> _markers = {};
   final PlacesService _placesService = PlacesService();
+  final OpenChargeMapService _chargeMapService = OpenChargeMapService();
   bool _isFetching = false;
+
+  @override
+  void dispose() {
+    _chargeMapService.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -76,7 +85,7 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      List<ChargingStationDetails> stations = await _placesService
+      List<ChargingStationDetails> stations = await _chargeMapService
           .fetchChargingStations(latitude, longitude, radius);
       print('Charging stations fetched: ${stations.length}');
 
@@ -103,6 +112,13 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _isFetching = false;
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not load charging stations. Check your connection.'),
+          ),
+        );
+      }
     }
   }
 
@@ -110,117 +126,15 @@ class _HomePageState extends State<HomePage> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (BuildContext context) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Station Name
-                Text(
-                  station.name,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Address Row
-                Row(
-                  children: [
-                    const Icon(Icons.location_on, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        station.address,
-                        style: const TextStyle(
-                            fontSize: 16, color: Colors.black54),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Rating Row
-                if (station.rating != null)
-                  Row(
-                    children: [
-                      const Icon(Icons.star, color: Colors.amber),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${station.rating}',
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                const SizedBox(height: 16),
-                // Dummy data fields
-                Text(
-                  "Number of Connectors: ${station.numberOfConnectors}",
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Connector Types: ${station.connectorTypes.join(', ')}",
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Status: ${station.status}",
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Price per 15 min: ₹${station.pricePer15Min}",
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Timing: ${station.timing}",
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Accessibility: ${station.isPublic ? 'Public' : 'Private'}",
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Capacity: ${station.capacity}",
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 16),
-                // Get Directions Button
-                ElevatedButton.icon(
-                  onPressed: () {
-                    _openDirections(station.latitude, station.longitude);
-                  },
-                  icon: const Icon(Icons.directions),
-                  label: const Text("Get Directions"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    textStyle: const TextStyle(fontSize: 16),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Close Button
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: const Text(
-                    "Close",
-                    style: TextStyle(color: Colors.red, fontSize: 16),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        return _StationDetailsSheet(
+          station: station,
+          onDirections: () =>
+              _openDirections(station.latitude, station.longitude),
         );
       },
     );
@@ -363,6 +277,238 @@ class _HomePageState extends State<HomePage> {
               markers: _markers,
               zoomControlsEnabled: false,
             ),
+    );
+  }
+}
+
+/// Bottom sheet showing real Open Charge Map details for a station, with a
+/// favorites toggle and a "Get Directions" action.
+class _StationDetailsSheet extends StatefulWidget {
+  final ChargingStationDetails station;
+  final VoidCallback onDirections;
+
+  const _StationDetailsSheet({
+    required this.station,
+    required this.onDirections,
+  });
+
+  @override
+  State<_StationDetailsSheet> createState() => _StationDetailsSheetState();
+}
+
+class _StationDetailsSheetState extends State<_StationDetailsSheet> {
+  bool _isFavorite = false;
+  bool _favLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavorite();
+  }
+
+  Future<void> _loadFavorite() async {
+    final fav = await FavoritesManager.isFavorite(widget.station.placeId);
+    if (mounted) {
+      setState(() {
+        _isFavorite = fav;
+        _favLoaded = true;
+      });
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    if (_isFavorite) {
+      await FavoritesManager.removeFavorite(widget.station.placeId);
+    } else {
+      await FavoritesManager.addFavorite(widget.station);
+    }
+    if (mounted) {
+      setState(() => _isFavorite = !_isFavorite);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isFavorite ? 'Added to favorites' : 'Removed from favorites',
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final station = widget.station;
+    final bool? operational = station.isOperational;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header: name + favorite toggle.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    station.name,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _favLoaded ? _toggleFavorite : null,
+                  icon: Icon(
+                    _isFavorite ? Icons.star : Icons.star_border,
+                    color: Colors.amber,
+                    size: 28,
+                  ),
+                ),
+              ],
+            ),
+            if (station.operatorName != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                station.operatorName!,
+                style: const TextStyle(fontSize: 15, color: Colors.black54),
+              ),
+            ],
+            const SizedBox(height: 10),
+            // Status chip.
+            if (operational != null)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: operational
+                      ? Colors.green.withOpacity(0.12)
+                      : Colors.red.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      operational ? Icons.check_circle : Icons.error_outline,
+                      size: 16,
+                      color: operational ? Colors.green : Colors.red,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      station.statusTitle ??
+                          (operational ? 'Operational' : 'Not operational'),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: operational ? Colors.green : Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 12),
+            // Address.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.location_on, color: Colors.grey, size: 20),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    station.address,
+                    style: const TextStyle(fontSize: 15, color: Colors.black54),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Connectors.
+            _infoRow(Icons.ev_station, 'Connectors',
+                '${station.numberOfConnectors}'),
+            if (station.maxPowerKW != null)
+              _infoRow(Icons.bolt, 'Max power',
+                  '${station.maxPowerKW!.toStringAsFixed(0)} kW'),
+            if (station.connectorTypes.isNotEmpty)
+              _infoRow(Icons.power, 'Types',
+                  station.connectorTypes.join(', ')),
+            _infoRow(Icons.lock_open, 'Access', station.accessLabel),
+            if (station.usageCost != null && station.usageCost!.isNotEmpty)
+              _infoRow(Icons.currency_rupee, 'Cost', station.usageCost!),
+            const SizedBox(height: 8),
+            // Per-connector detail.
+            if (station.connections.isNotEmpty) ...[
+              const Divider(),
+              const Text(
+                'Available connectors',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              ...station.connections.map((c) {
+                final power =
+                    c.powerKW != null ? ' · ${c.powerKW!.toStringAsFixed(0)} kW' : '';
+                final current = c.currentType != null ? ' · ${c.currentType}' : '';
+                final qty = (c.quantity ?? 1) > 1 ? '${c.quantity}× ' : '';
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(
+                    '• $qty${c.type}$power$current',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                );
+              }),
+            ],
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: widget.onDirections,
+              icon: const Icon(Icons.directions),
+              label: const Text('Get Directions'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 44),
+                textStyle: const TextStyle(fontSize: 16),
+              ),
+            ),
+            const SizedBox(height: 4),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Close',
+                style: TextStyle(color: Colors.red, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: Colors.green),
+          const SizedBox(width: 8),
+          Text(
+            '$label: ',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontSize: 15)),
+          ),
+        ],
+      ),
     );
   }
 }
