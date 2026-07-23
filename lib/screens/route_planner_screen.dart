@@ -189,10 +189,10 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
               _boundsFromLatLngList(polylineCoordinates), 50),
         );
       } else {
-        print("Route error: ${routeData['status']}");
+        debugPrint("Route error: ${routeData['status']}");
       }
     } catch (e) {
-      print("Error planning route: $e");
+      debugPrint("Error planning route: $e");
     }
   }
 
@@ -219,7 +219,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     try {
       List stations = await _chargeMapService.fetchChargingStations(
           center.latitude, center.longitude, radius);
-      print("Fetched ${stations.length} charging stations along the route.");
+      debugPrint("Fetched ${stations.length} charging stations along the route.");
 
       setState(() {
         for (var station in stations) {
@@ -235,7 +235,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         }
       });
     } catch (e) {
-      print("Error fetching charging stations along route: $e");
+      debugPrint("Error fetching charging stations along route: $e");
     }
   }
 

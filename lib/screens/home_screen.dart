@@ -51,7 +51,7 @@ class _HomePageState extends State<HomePage> {
     if (!serviceEnabled) {
       serviceEnabled = await _locationService.requestService();
       if (!serviceEnabled) {
-        print('Location service not enabled.');
+        debugPrint('Location service not enabled.');
         return;
       }
     }
@@ -60,13 +60,12 @@ class _HomePageState extends State<HomePage> {
     if (permissionGranted == PermissionStatus.denied) {
       permissionGranted = await _locationService.requestPermission();
       if (permissionGranted != PermissionStatus.granted) {
-        print('Location permission not granted.');
+        debugPrint('Location permission not granted.');
         return;
       }
     }
 
     _currentLocation = await _locationService.getLocation();
-    print('_currentLocation: $_currentLocation');
     if (_currentLocation != null) {
       setState(() {});
       _fetchChargingStations(
@@ -87,7 +86,7 @@ class _HomePageState extends State<HomePage> {
     try {
       List<ChargingStationDetails> stations = await _chargeMapService
           .fetchChargingStations(latitude, longitude, radius);
-      print('Charging stations fetched: ${stations.length}');
+      debugPrint('Charging stations fetched: ${stations.length}');
 
       // Create markers for each station using onTap callback to show bottom sheet.
       Set<Marker> newMarkers = stations.map((station) {
@@ -108,7 +107,7 @@ class _HomePageState extends State<HomePage> {
         _isFetching = false;
       });
     } catch (e) {
-      print('Error fetching charging stations: $e');
+      debugPrint('Error fetching charging stations: $e');
       setState(() {
         _isFetching = false;
       });
@@ -176,7 +175,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onCameraMove(CameraPosition position) {
-    print('Camera moved: ${position.target}');
+    // No-op: camera position is user-location-sensitive and must not be logged.
   }
 
   void _onCameraIdle() async {
