@@ -8,11 +8,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:ev_app/models/charging_station_details.dart';
+import 'package:ev_app/models/station_filter.dart';
 import 'package:ev_app/models/station_status_summary.dart';
 import 'package:ev_app/services/open_charge_map_service.dart';
 import 'package:ev_app/services/places_services.dart';
 import 'package:ev_app/services/favorites_manager.dart';
 import 'package:ev_app/services/station_reports_service.dart';
+import 'package:ev_app/widgets/station_filter_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:ev_app/widgets/places_autocomplete.dart';
 
@@ -31,6 +33,11 @@ class _HomePageState extends State<HomePage> {
   final PlacesService _placesService = PlacesService();
   final OpenChargeMapService _chargeMapService = OpenChargeMapService();
   bool _isFetching = false;
+
+  /// All stations seen so far, de-duplicated by id. Filters and the list view
+  /// are derived from this.
+  final Map<String, ChargingStationDetails> _stationsById = {};
+  StationFilter _filter = const StationFilter();
 
   @override
   void dispose() {
@@ -90,22 +97,11 @@ class _HomePageState extends State<HomePage> {
           .fetchChargingStations(latitude, longitude, radius);
       debugPrint('Charging stations fetched: ${stations.length}');
 
-      // Create markers for each station using onTap callback to show bottom sheet.
-      Set<Marker> newMarkers = stations.map((station) {
-        return Marker(
-          markerId: MarkerId(station.placeId),
-          position: LatLng(station.latitude, station.longitude),
-          infoWindow: const InfoWindow(title: ""),
-          onTap: () {
-            _showStationBottomSheet(station);
-          },
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-        );
-      }).toSet();
-
+      for (final station in stations) {
+        _stationsById[station.placeId] = station;
+      }
+      _renderMarkers();
       setState(() {
-        _markers.addAll(newMarkers);
         _isFetching = false;
       });
     } catch (e) {
@@ -121,6 +117,67 @@ class _HomePageState extends State<HomePage> {
         );
       }
     }
+  }
+
+  /// Stations passing the current filter.
+  List<ChargingStationDetails> get _filteredStations =>
+      _stationsById.values.where(_filter.matches).toList();
+
+  /// Rebuild the map markers from the filtered stations.
+  void _renderMarkers() {
+    final markers = _filteredStations.map((station) {
+      return Marker(
+        markerId: MarkerId(station.placeId),
+        position: LatLng(station.latitude, station.longitude),
+        infoWindow: const InfoWindow(title: ""),
+        onTap: () => _showStationBottomSheet(station),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+      );
+    }).toSet();
+    setState(() {
+      _markers
+        ..clear()
+        ..addAll(markers);
+    });
+  }
+
+  Future<void> _openFilters() async {
+    final result = await showStationFilterSheet(context, _filter);
+    if (result != null) {
+      setState(() => _filter = result);
+      _renderMarkers();
+    }
+  }
+
+  double _distanceToStation(ChargingStationDetails s) {
+    if (_currentLocation == null) return double.infinity;
+    return _calculateDistance(
+      _currentLocation!.latitude!,
+      _currentLocation!.longitude!,
+      s.latitude,
+      s.longitude,
+    );
+  }
+
+  /// Filtered stations sorted nearest-first.
+  List<ChargingStationDetails> _sortedFilteredStations() {
+    final list = _filteredStations;
+    list.sort(
+        (a, b) => _distanceToStation(a).compareTo(_distanceToStation(b)));
+    return list;
+  }
+
+  String _formatDistance(double meters) {
+    if (meters.isInfinite) return '';
+    if (meters < 1000) return '${meters.round()} m';
+    return '${(meters / 1000).toStringAsFixed(1)} km';
+  }
+
+  void _openStation(ChargingStationDetails station) {
+    _mapController.animateCamera(
+      CameraUpdate.newLatLng(LatLng(station.latitude, station.longitude)),
+    );
+    _showStationBottomSheet(station);
   }
 
   void _showStationBottomSheet(ChargingStationDetails station) {
@@ -245,6 +302,36 @@ class _HomePageState extends State<HomePage> {
             ),
             onPressed: _handleSearch,
           ),
+          // Filters, with a badge showing how many are active.
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.tune, color: Colors.white),
+                onPressed: _openFilters,
+                tooltip: 'Filters',
+              ),
+              if (_filter.isActive)
+                Positioned(
+                  right: 6,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${_filter.activeCount}',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             icon: const Icon(
               Icons.directions,
@@ -261,13 +348,6 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      floatingActionButton: _currentLocation == null
-          ? null
-          : FloatingActionButton(
-              onPressed: _recenterToMyLocation,
-              tooltip: 'My location',
-              child: const Icon(Icons.my_location),
-            ),
       body: _currentLocation == null
           ? const Center(
               child: Column(
@@ -337,7 +417,9 @@ class _HomePageState extends State<HomePage> {
                                     size: 16, color: AppColors.medgreen),
                                 const SizedBox(width: 6),
                                 Text(
-                                  '${_markers.length} stations nearby',
+                                  _filter.isActive
+                                      ? '${_filteredStations.length} match filters'
+                                      : '${_filteredStations.length} stations nearby',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w600),
                                 ),
@@ -346,8 +428,126 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ),
+                // "My location" button, kept above the collapsed list sheet.
+                Positioned(
+                  right: 12,
+                  bottom: MediaQuery.of(context).size.height * 0.14 + 12,
+                  child: FloatingActionButton(
+                    onPressed: _recenterToMyLocation,
+                    tooltip: 'My location',
+                    child: const Icon(Icons.my_location),
+                  ),
+                ),
+                _buildStationListSheet(),
               ],
             ),
+    );
+  }
+
+  /// A Google-Maps-style list that slides up over the map, showing filtered
+  /// stations nearest-first. Tapping one recenters the map and opens details.
+  Widget _buildStationListSheet() {
+    final stations = _sortedFilteredStations();
+    return DraggableScrollableSheet(
+      initialChildSize: 0.14,
+      minChildSize: 0.14,
+      maxChildSize: 0.75,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 8,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: ListView.builder(
+            controller: scrollController,
+            padding: EdgeInsets.zero,
+            itemCount: stations.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade400,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.ev_station,
+                              size: 18, color: AppColors.medgreen),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${stations.length} '
+                            '${stations.length == 1 ? 'station' : 'stations'}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          const Spacer(),
+                          if (_filter.isActive)
+                            TextButton.icon(
+                              onPressed: _openFilters,
+                              icon: const Icon(Icons.tune, size: 16),
+                              label: Text('${_filter.activeCount} filters'),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                  ],
+                );
+              }
+
+              final station = stations[index - 1];
+              final distance = _formatDistance(_distanceToStation(station));
+              final subtitleParts = <String>[
+                if (station.operatorName != null) station.operatorName!,
+                if (distance.isNotEmpty) distance,
+                '${station.numberOfConnectors} connectors',
+              ];
+              return ListTile(
+                leading: const Icon(Icons.ev_station,
+                    color: AppColors.medgreen),
+                title: Text(
+                  station.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  subtitleParts.join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: station.maxPowerKW != null
+                    ? Text(
+                        '${station.maxPowerKW!.toStringAsFixed(0)} kW',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.darkgreen),
+                      )
+                    : null,
+                onTap: () => _openStation(station),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
