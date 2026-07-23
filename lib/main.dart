@@ -1,3 +1,4 @@
+import 'package:ev_app/const/app_theme.dart';
 import 'package:ev_app/const/env.dart';
 import 'package:ev_app/screens/home_screen.dart';
 import 'package:ev_app/screens/login_screen.dart';
@@ -34,6 +35,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      title: 'Apna Charge',
+      theme: AppTheme.light,
       initialRoute: '/',
       routes: {
         '/': (context) => const SplashScreen(),

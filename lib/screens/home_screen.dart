@@ -259,23 +259,103 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: _currentLocation == null
-          ? const Center(child: CircularProgressIndicator())
-          : GoogleMap(
-              onMapCreated: _onMapCreated,
-              onCameraMove: _onCameraMove,
-              onCameraIdle: _onCameraIdle,
-              initialCameraPosition: CameraPosition(
-                target: LatLng(
-                  _currentLocation!.latitude!,
-                  _currentLocation!.longitude!,
-                ),
-                zoom: 14,
-              ),
-              myLocationEnabled: true,
-              markers: _markers,
-              zoomControlsEnabled: false,
+      floatingActionButton: _currentLocation == null
+          ? null
+          : FloatingActionButton(
+              onPressed: _recenterToMyLocation,
+              tooltip: 'My location',
+              child: const Icon(Icons.my_location),
             ),
+      body: _currentLocation == null
+          ? const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Getting your location…'),
+                ],
+              ),
+            )
+          : Stack(
+              children: [
+                GoogleMap(
+                  onMapCreated: _onMapCreated,
+                  onCameraMove: _onCameraMove,
+                  onCameraIdle: _onCameraIdle,
+                  initialCameraPosition: CameraPosition(
+                    target: LatLng(
+                      _currentLocation!.latitude!,
+                      _currentLocation!.longitude!,
+                    ),
+                    zoom: 14,
+                  ),
+                  myLocationEnabled: true,
+                  markers: _markers,
+                  zoomControlsEnabled: false,
+                ),
+                // Status pill: fetching spinner or station count.
+                Positioned(
+                  top: 12,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.12),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: _isFetching
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                ),
+                                SizedBox(width: 8),
+                                Text('Finding stations…'),
+                              ],
+                            )
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.ev_station,
+                                    size: 16, color: AppColors.medgreen),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${_markers.length} stations nearby',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  /// Animate the map back to the user's current location.
+  Future<void> _recenterToMyLocation() async {
+    if (_currentLocation == null) return;
+    _mapController.animateCamera(
+      CameraUpdate.newLatLng(
+        LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
+      ),
     );
   }
 }
