@@ -1,13 +1,15 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:ev_app/const/colors.dart';
+import 'package:ev_app/const/env.dart';
+import 'package:ev_app/models/charging_station_details.dart';
+import 'package:ev_app/services/open_charge_map_service.dart';
+import 'package:ev_app/widgets/places_autocomplete.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:location/location.dart';
-import 'package:ev_app/const/env.dart';
-import 'package:ev_app/services/open_charge_map_service.dart';
 
 class RoutePlannerScreen extends StatefulWidget {
   const RoutePlannerScreen({Key? key}) : super(key: key);
@@ -17,93 +19,126 @@ class RoutePlannerScreen extends StatefulWidget {
 }
 
 class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
-  final TextEditingController _originController = TextEditingController();
-  final TextEditingController _destinationController = TextEditingController();
-
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
-
-  // Default current location fallback (San Francisco)
-  LatLng _currentLocationCoordinates = const LatLng(37.773972, -122.431297);
-  String get _apiKey => Env.googleMapsApiKey;
   final OpenChargeMapService _chargeMapService = OpenChargeMapService();
 
-  LatLng? _origin;
-  LatLng? _destination;
+  String get _apiKey => Env.googleMapsApiKey;
+
+  // India centroid as a neutral fallback until the user's location resolves.
+  LatLng _mapCenter = const LatLng(20.5937, 78.9629);
+  bool _locating = true;
+
+  LatLng? _originLatLng;
+  String _originLabel = 'Your location';
+  LatLng? _destinationLatLng;
+  String? _destinationLabel;
+
+  bool _planning = false;
+  String? _error;
+  String? _distanceText;
+  String? _durationText;
+  int _chargersOnRoute = 0;
 
   @override
   void initState() {
     super.initState();
-    _setCurrentLocationAsOrigin();
+    _initCurrentLocation();
   }
 
   @override
   void dispose() {
     _chargeMapService.dispose();
-    _originController.dispose();
-    _destinationController.dispose();
     super.dispose();
   }
 
-  /// Fetch current location and update the origin field as well as the map center.
-  Future<void> _setCurrentLocationAsOrigin() async {
-    Location location = Location();
+  /// Resolve the user's location once and use it as the default origin.
+  Future<void> _initCurrentLocation() async {
+    try {
+      final loc = await _fetchCurrentLocation();
+      if (!mounted) return;
+      setState(() {
+        _originLatLng = loc;
+        _mapCenter = loc;
+        _locating = false;
+      });
+      _mapController?.animateCamera(CameraUpdate.newLatLng(loc));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _locating = false;
+        _originLabel = 'Choose origin';
+      });
+    }
+  }
+
+  Future<LatLng> _fetchCurrentLocation() async {
+    final location = Location();
     bool serviceEnabled = await location.serviceEnabled();
     if (!serviceEnabled) {
       serviceEnabled = await location.requestService();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) throw Exception('Location service disabled');
     }
 
     PermissionStatus permissionGranted = await location.hasPermission();
     if (permissionGranted == PermissionStatus.denied) {
       permissionGranted = await location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) return;
+      if (permissionGranted != PermissionStatus.granted) {
+        throw Exception('Location permission denied');
+      }
     }
 
-    LocationData currentLocation = await location.getLocation();
-    setState(() {
-      _currentLocationCoordinates = LatLng(
-          currentLocation.latitude ?? _currentLocationCoordinates.latitude,
-          currentLocation.longitude ?? _currentLocationCoordinates.longitude);
-      // Pre-fill the origin text field with a coordinate string.
-      _originController.text =
-          "${_currentLocationCoordinates.latitude.toStringAsFixed(5)}, ${_currentLocationCoordinates.longitude.toStringAsFixed(5)}";
-      if (_mapController != null) {
-        _mapController!.animateCamera(
-          CameraUpdate.newLatLng(_currentLocationCoordinates),
-        );
-      }
-    });
+    final current = await location.getLocation();
+    return LatLng(current.latitude!, current.longitude!);
   }
 
-  /// -------------------------------
-  /// 1. Directions API Call and Polyline Decoding
-  /// -------------------------------
-
-  /// Calls the Google Directions API with origin, destination (and waypoints if needed)
-  Future<Map<String, dynamic>> _fetchRoute(String origin, String destination,
-      {List<String>? waypoints}) async {
-    String waypointParam = "";
-    if (waypoints != null && waypoints.isNotEmpty) {
-      waypointParam = "&waypoints=" + waypoints.join("|");
+  /// Open the autocomplete search and store the chosen place.
+  Future<void> _pickPlace({required bool isOrigin}) async {
+    if (_apiKey.isEmpty) {
+      _showError('Search needs a Google API key. See setup in the README.');
+      return;
     }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlacesAutocomplete(
+          apiKey: _apiKey,
+          onPlaceSelected: (placeId, description, LatLng latLng) {
+            setState(() {
+              if (isOrigin) {
+                _originLatLng = latLng;
+                _originLabel = description;
+              } else {
+                _destinationLatLng = latLng;
+                _destinationLabel = description;
+              }
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Directions
+  // ---------------------------------------------------------------------------
+
+  Future<Map<String, dynamic>> _fetchRoute(
+      String origin, String destination) async {
     final url =
-        "https://maps.googleapis.com/maps/api/directions/json?origin=${Uri.encodeComponent(origin)}&destination=${Uri.encodeComponent(destination)}$waypointParam&key=$_apiKey";
+        'https://maps.googleapis.com/maps/api/directions/json?origin=${Uri.encodeComponent(origin)}&destination=${Uri.encodeComponent(destination)}&key=$_apiKey';
     final response = await http.get(Uri.parse(url));
     if (response.statusCode == 200) {
-      return json.decode(response.body);
-    } else {
-      throw Exception("Failed to fetch route");
+      return json.decode(response.body) as Map<String, dynamic>;
     }
+    throw Exception('Failed to fetch route (HTTP ${response.statusCode})');
   }
 
-  /// Decodes an encoded polyline string into a list of LatLng
   List<LatLng> _decodePolyline(String encoded) {
-    List<LatLng> poly = [];
-    int index = 0;
-    int len = encoded.length;
-    int lat = 0, lng = 0;
+    final poly = <LatLng>[];
+    int index = 0, lat = 0, lng = 0;
+    final len = encoded.length;
     while (index < len) {
       int b, shift = 0, result = 0;
       do {
@@ -111,7 +146,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         result |= (b & 0x1F) << shift;
         shift += 5;
       } while (b >= 0x20);
-      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      final dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
       lat += dlat;
       shift = 0;
       result = 0;
@@ -120,169 +155,183 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         result |= (b & 0x1F) << shift;
         shift += 5;
       } while (b >= 0x20);
-      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      final dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
       lng += dlng;
-      LatLng p = LatLng(lat / 1E5, lng / 1E5);
-      poly.add(p);
+      poly.add(LatLng(lat / 1E5, lng / 1E5));
     }
     return poly;
   }
 
-  /// -------------------------------
-  /// 2. Plan Route and Display on Map
-  /// -------------------------------
   Future<void> _planRoute() async {
-    // Use the text from the controllers, default is the current location in origin.
-    if (_originController.text.isEmpty || _destinationController.text.isEmpty)
+    if (_originLatLng == null || _destinationLatLng == null) {
+      setState(() => _error = 'Choose both an origin and a destination.');
       return;
-    String originInput = _originController.text;
-    String destinationInput = _destinationController.text;
+    }
+
+    setState(() {
+      _planning = true;
+      _error = null;
+      _distanceText = null;
+      _durationText = null;
+      _chargersOnRoute = 0;
+    });
 
     try {
-      Map<String, dynamic> routeData =
-          await _fetchRoute(originInput, destinationInput);
-      if (routeData['status'] == 'OK') {
-        final route = routeData['routes'][0];
-        final overviewPolyline = route['overview_polyline']['points'];
-        List<LatLng> polylineCoordinates = _decodePolyline(overviewPolyline);
+      final origin =
+          '${_originLatLng!.latitude},${_originLatLng!.longitude}';
+      final destination =
+          '${_destinationLatLng!.latitude},${_destinationLatLng!.longitude}';
 
-        // Get origin and destination from the first leg.
-        final leg = route['legs'][0];
-        _origin =
-            LatLng(leg['start_location']['lat'], leg['start_location']['lng']);
-        _destination =
-            LatLng(leg['end_location']['lat'], leg['end_location']['lng']);
-
-        setState(() {
-          _markers.clear();
-          _markers.add(
-            Marker(
-              markerId: const MarkerId("origin"),
-              position: _origin!,
-              infoWindow: const InfoWindow(title: "Origin"),
-            ),
-          );
-          _markers.add(
-            Marker(
-              markerId: const MarkerId("destination"),
-              position: _destination!,
-              infoWindow: const InfoWindow(title: "Destination"),
-            ),
-          );
-          _polylines.clear();
-          _polylines.add(
-            Polyline(
-              polylineId: const PolylineId("route"),
-              points: polylineCoordinates,
-              color: Colors.blue,
-              width: 5,
-            ),
-          );
-        });
-
-        // Fetch and display charging stations along the route.
-        _fetchChargingStationsAlongRoute(polylineCoordinates);
-
-        // Recenter map to fit the route.
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngBounds(
-              _boundsFromLatLngList(polylineCoordinates), 50),
-        );
-      } else {
-        debugPrint("Route error: ${routeData['status']}");
+      final routeData = await _fetchRoute(origin, destination);
+      if (routeData['status'] != 'OK') {
+        setState(() => _error = 'Could not find a route between those points.');
+        return;
       }
-    } catch (e) {
-      debugPrint("Error planning route: $e");
-    }
-  }
 
-  /// Computes and fetches charging stations based on the route polyline.
-  Future<void> _fetchChargingStationsAlongRoute(
-      List<LatLng> polylineCoordinates) async {
-    double minLat = polylineCoordinates.first.latitude;
-    double maxLat = polylineCoordinates.first.latitude;
-    double minLng = polylineCoordinates.first.longitude;
-    double maxLng = polylineCoordinates.first.longitude;
-
-    for (var point in polylineCoordinates) {
-      if (point.latitude < minLat) minLat = point.latitude;
-      if (point.latitude > maxLat) maxLat = point.latitude;
-      if (point.longitude < minLng) minLng = point.longitude;
-      if (point.longitude > maxLng) maxLng = point.longitude;
-    }
-    double centerLat = (minLat + maxLat) / 2;
-    double centerLng = (minLng + maxLng) / 2;
-    LatLng center = LatLng(centerLat, centerLng);
-
-    double radius = _calculateDistance(centerLat, centerLng, maxLat, maxLng);
-
-    try {
-      List stations = await _chargeMapService.fetchChargingStations(
-          center.latitude, center.longitude, radius);
-      debugPrint("Fetched ${stations.length} charging stations along the route.");
+      final route = routeData['routes'][0];
+      final points =
+          _decodePolyline(route['overview_polyline']['points'] as String);
+      final leg = route['legs'][0];
 
       setState(() {
-        for (var station in stations) {
-          _markers.add(
-            Marker(
-              markerId: MarkerId(station.placeId),
-              position: LatLng(station.latitude, station.longitude),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueGreen),
-              infoWindow: InfoWindow(title: station.name),
-            ),
-          );
-        }
+        _markers
+          ..clear()
+          ..add(Marker(
+            markerId: const MarkerId('origin'),
+            position: _originLatLng!,
+            infoWindow: const InfoWindow(title: 'Origin'),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueAzure),
+          ))
+          ..add(Marker(
+            markerId: const MarkerId('destination'),
+            position: _destinationLatLng!,
+            infoWindow: const InfoWindow(title: 'Destination'),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueRed),
+          ));
+        _polylines
+          ..clear()
+          ..add(Polyline(
+            polylineId: const PolylineId('route'),
+            points: points,
+            color: AppColors.medgreen,
+            width: 5,
+          ));
+        _distanceText = leg['distance']?['text'] as String?;
+        _durationText = leg['duration']?['text'] as String?;
       });
+
+      await _fetchChargingStationsAlongRoute(points);
+
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngBounds(_boundsFromLatLngList(points), 60),
+      );
     } catch (e) {
-      debugPrint("Error fetching charging stations along route: $e");
+      debugPrint('Route error: $e');
+      setState(() => _error = 'Something went wrong planning the route.');
+    } finally {
+      if (mounted) setState(() => _planning = false);
     }
   }
 
-  Future<LatLng> _fetchCurrentLocation() async {
-    Location location = Location();
-    bool serviceEnabled = await location.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await location.requestService();
-      if (!serviceEnabled) {
-        throw Exception("Location service disabled");
+  // ---------------------------------------------------------------------------
+  // Chargers along the route
+  // ---------------------------------------------------------------------------
+
+  /// Sample points evenly along the route and query Open Charge Map around
+  /// each, so results genuinely follow the corridor rather than clustering at
+  /// a single midpoint. Results are de-duplicated by station id.
+  Future<void> _fetchChargingStationsAlongRoute(List<LatLng> points) async {
+    if (points.isEmpty) return;
+
+    const int maxSamples = 10;
+    final samples = _sampleAlongRoute(points, maxSamples: maxSamples);
+    // Radius per sample scales with spacing so consecutive circles overlap,
+    // clamped to a sane corridor width.
+    final radius = (_routeLength(points) / max(samples.length, 1) / 2)
+        .clamp(5000.0, 25000.0);
+
+    final results = await Future.wait(
+      samples.map(
+        (p) => _chargeMapService
+            .fetchChargingStations(p.latitude, p.longitude, radius)
+            .catchError((_) => <ChargingStationDetails>[]),
+      ),
+    );
+
+    final byId = <String, ChargingStationDetails>{};
+    for (final list in results) {
+      for (final s in list) {
+        byId[s.placeId] = s;
       }
     }
 
-    PermissionStatus permissionGranted = await location.hasPermission();
-    if (permissionGranted == PermissionStatus.denied) {
-      permissionGranted = await location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) {
-        throw Exception("Location permission denied");
+    if (!mounted) return;
+    setState(() {
+      for (final s in byId.values) {
+        _markers.add(Marker(
+          markerId: MarkerId(s.placeId),
+          position: LatLng(s.latitude, s.longitude),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          infoWindow: InfoWindow(title: s.name, snippet: s.operatorName),
+        ));
       }
-    }
-
-    LocationData currentLocation = await location.getLocation();
-    return LatLng(currentLocation.latitude!, currentLocation.longitude!);
+      _chargersOnRoute = byId.length;
+    });
   }
 
-  /// Calculate distance in meters between two coordinates.
+  double _routeLength(List<LatLng> points) {
+    double total = 0;
+    for (int i = 1; i < points.length; i++) {
+      total += _calculateDistance(points[i - 1].latitude,
+          points[i - 1].longitude, points[i].latitude, points[i].longitude);
+    }
+    return total;
+  }
+
+  List<LatLng> _sampleAlongRoute(List<LatLng> points,
+      {required int maxSamples}) {
+    if (points.length <= 2) return points;
+
+    final total = _routeLength(points);
+    // Aim for ~maxSamples points, but never closer than 5 km apart.
+    final step = max(total / maxSamples, 5000.0);
+
+    final samples = <LatLng>[points.first];
+    double acc = 0;
+    for (int i = 1; i < points.length; i++) {
+      acc += _calculateDistance(points[i - 1].latitude, points[i - 1].longitude,
+          points[i].latitude, points[i].longitude);
+      if (acc >= step) {
+        samples.add(points[i]);
+        acc = 0;
+      }
+    }
+    samples.add(points.last);
+    return samples;
+  }
+
   double _calculateDistance(
       double lat1, double lng1, double lat2, double lng2) {
-    const double R = 6371000;
-    double dLat = _degToRad(lat2 - lat1);
-    double dLng = _degToRad(lng2 - lng1);
-    double a = sin(dLat / 2) * sin(dLat / 2) +
+    const double r = 6371000;
+    final dLat = _degToRad(lat2 - lat1);
+    final dLng = _degToRad(lng2 - lng1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
         cos(_degToRad(lat1)) *
             cos(_degToRad(lat2)) *
             sin(dLng / 2) *
             sin(dLng / 2);
-    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    return R * c;
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return r * c;
   }
 
   double _degToRad(double deg) => deg * (pi / 180);
 
-  /// Helper to get bounds from a list of LatLng.
   LatLngBounds _boundsFromLatLngList(List<LatLng> list) {
     double x0 = list.first.latitude, x1 = list.first.latitude;
     double y0 = list.first.longitude, y1 = list.first.longitude;
-    for (LatLng latLng in list) {
+    for (final latLng in list) {
       if (latLng.latitude < x0) x0 = latLng.latitude;
       if (latLng.latitude > x1) x1 = latLng.latitude;
       if (latLng.longitude < y0) y0 = latLng.longitude;
@@ -294,154 +343,188 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     );
   }
 
-  /// -------------------------------
-  /// 3. Build the UI
-  /// -------------------------------
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // ---------------------------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<LatLng>(
-      future:
-          _fetchCurrentLocation(), // The function to fetch the user's current location.
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          // While the location is being fetched, show a loading indicator.
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        } else if (snapshot.hasError) {
-          // If there's an error (e.g., permissions not granted), show an error message.
-          return Scaffold(
-            body: Center(
-              child: Text('Error: ${snapshot.error}'),
-            ),
-          );
-        } else if (snapshot.hasData) {
-          // When the location is successfully retrieved, set up the map and planner.
-          _currentLocationCoordinates =
-              snapshot.data!; // Update with fetched location.
-
-          return Scaffold(
-            backgroundColor: AppColors.medgreen,
-            appBar: AppBar(
-              leading: IconButton(
-                icon: Icon(
-                  Icons.arrow_back,
-                  color: Colors.white,
-                  size: 24,
-                ),
-                onPressed: () => Navigator.pop(context),
-              ),
-              backgroundColor: AppColors.medgreen,
-              title: Text(
-                'Route Planner',
-                style: GoogleFonts.arimo(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1),
-              ),
-            ),
-            body: Column(
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Route Planner',
+          style: GoogleFonts.arimo(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1,
+          ),
+        ),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: Column(
               children: [
-                // Input fields for origin and destination.
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Container(
-                    padding: const EdgeInsets.all(2.0),
-                    decoration: BoxDecoration(
-                      color: AppColors.bglight,
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                    child: TextField(
-                      style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600),
-                      controller: _originController,
-                      decoration: InputDecoration(
-                        hintText: "Enter Origin",
-                        hintStyle: GoogleFonts.arimo(
-                          color: Colors.black,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        border: OutlineInputBorder(borderSide: BorderSide.none),
-                      ),
-                    ),
+                _locationField(
+                  icon: Icons.my_location,
+                  iconColor: AppColors.medgreen,
+                  label: 'From',
+                  value: _originLabel,
+                  onTap: () => _pickPlace(isOrigin: true),
+                ),
+                const SizedBox(height: 8),
+                _locationField(
+                  icon: Icons.location_on,
+                  iconColor: Colors.red,
+                  label: 'To',
+                  value: _destinationLabel ?? 'Choose destination',
+                  onTap: () => _pickPlace(isOrigin: false),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _planning ? null : _planRoute,
+                    child: _planning
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2.5),
+                          )
+                        : const Text('Plan Route'),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Container(
-                    padding: const EdgeInsets.all(2.0),
-                    decoration: BoxDecoration(
-                      color: AppColors.bglight,
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                    child: TextField(
-                      style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600),
-                      controller: _destinationController,
-                      decoration: InputDecoration(
-                        hintText: "Enter Destination",
-                        hintStyle: GoogleFonts.arimo(
-                          color: Colors.black,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        border: OutlineInputBorder(borderSide: BorderSide.none),
-                      ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(
+                          color: Colors.red, fontWeight: FontWeight.w500),
                     ),
                   ),
-                ),
-                SizedBox(height: 6),
-                ElevatedButton(
-                  onPressed: _planRoute,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.bglight,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                    textStyle: GoogleFonts.arimo(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+                if (_distanceText != null) _buildTripSummary(),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _locating
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 12),
+                        Text('Getting your location…'),
+                      ],
                     ),
-                  ),
-                  child: Text(
-                    "Plan Route",
-                    style: GoogleFonts.arimo(
-                        color: Colors.black,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1),
-                  ),
-                ),
-                SizedBox(height: 10),
-                // The map, centered on the current location.
-                Expanded(
-                  child: GoogleMap(
+                  )
+                : GoogleMap(
                     onMapCreated: (controller) {
                       _mapController = controller;
                       _mapController!.animateCamera(
-                        CameraUpdate.newLatLng(_currentLocationCoordinates),
+                        CameraUpdate.newLatLng(_mapCenter),
                       );
                     },
                     markers: _markers,
                     polylines: _polylines,
-                    initialCameraPosition: CameraPosition(
-                      target: _currentLocationCoordinates,
-                      zoom: 14,
-                    ),
+                    initialCameraPosition:
+                        CameraPosition(target: _mapCenter, zoom: 12),
                     myLocationEnabled: true,
+                    zoomControlsEnabled: false,
                   ),
-                ),
-              ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTripSummary() {
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.medgreen.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _summaryItem(Icons.straighten, _distanceText ?? '—'),
+          _summaryItem(Icons.schedule, _durationText ?? '—'),
+          _summaryItem(
+            Icons.ev_station,
+            '$_chargersOnRoute on the way',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryItem(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: AppColors.darkgreen),
+        const SizedBox(width: 4),
+        Text(text,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+      ],
+    );
+  }
+
+  Widget _locationField({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: iconColor, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 11, color: Colors.black54)),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
             ),
-          );
-        }
-        return const SizedBox(); // Safety fallback, though not typically reached.
-      },
+            const Icon(Icons.search, color: Colors.black38, size: 20),
+          ],
+        ),
+      ),
     );
   }
 }
