@@ -1,4 +1,5 @@
 import 'package:ev_app/const/colors.dart';
+import 'package:ev_app/screens/favorites_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -35,12 +36,12 @@ class AppDrawer extends StatelessWidget {
                     letterSpacing: 1)),
             onTap: () {
               Navigator.pop(context); // Close the drawer
-              // Navigator.push(
-              //   context,
-              //   MaterialPageRoute(
-              //     builder: (context) => const FavoritesScreen(),
-              //   ),
-              // );
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FavoritesScreen(),
+                ),
+              );
             },
           ),
           ListTile(
