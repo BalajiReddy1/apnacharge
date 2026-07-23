@@ -6,7 +6,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:location/location.dart';
-import 'package:ev_app/services/places_services.dart';
+import 'package:ev_app/const/env.dart';
+import 'package:ev_app/services/open_charge_map_service.dart';
 
 class RoutePlannerScreen extends StatefulWidget {
   const RoutePlannerScreen({Key? key}) : super(key: key);
@@ -25,9 +26,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
 
   // Default current location fallback (San Francisco)
   LatLng _currentLocationCoordinates = const LatLng(37.773972, -122.431297);
-  final String _apiKey =
-      "YOUR_GOOGLE_MAPS_API_KEY"; // Replace with your API key.
-  final PlacesService _placesService = PlacesService();
+  String get _apiKey => Env.googleMapsApiKey;
+  final OpenChargeMapService _chargeMapService = OpenChargeMapService();
 
   LatLng? _origin;
   LatLng? _destination;
@@ -36,6 +36,14 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   void initState() {
     super.initState();
     _setCurrentLocationAsOrigin();
+  }
+
+  @override
+  void dispose() {
+    _chargeMapService.dispose();
+    _originController.dispose();
+    _destinationController.dispose();
+    super.dispose();
   }
 
   /// Fetch current location and update the origin field as well as the map center.
@@ -209,7 +217,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     double radius = _calculateDistance(centerLat, centerLng, maxLat, maxLng);
 
     try {
-      List stations = await _placesService.fetchChargingStations(
+      List stations = await _chargeMapService.fetchChargingStations(
           center.latitude, center.longitude, radius);
       print("Fetched ${stations.length} charging stations along the route.");
 
