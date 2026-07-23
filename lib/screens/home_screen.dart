@@ -8,9 +8,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:ev_app/models/charging_station_details.dart';
+import 'package:ev_app/models/station_status_summary.dart';
 import 'package:ev_app/services/open_charge_map_service.dart';
 import 'package:ev_app/services/places_services.dart';
 import 'package:ev_app/services/favorites_manager.dart';
+import 'package:ev_app/services/station_reports_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:ev_app/widgets/places_autocomplete.dart';
 
@@ -376,13 +378,22 @@ class _StationDetailsSheet extends StatefulWidget {
 }
 
 class _StationDetailsSheetState extends State<_StationDetailsSheet> {
+  final StationReportsService _reportsService = StationReportsService();
+
   bool _isFavorite = false;
   bool _favLoaded = false;
+
+  StationStatusSummary? _summary;
+  String? _myReport;
+  bool _reportsLoading = true;
+  bool _reportsAvailable = true;
+  bool _submitting = false;
 
   @override
   void initState() {
     super.initState();
     _loadFavorite();
+    _loadReports();
   }
 
   Future<void> _loadFavorite() async {
@@ -393,6 +404,62 @@ class _StationDetailsSheetState extends State<_StationDetailsSheet> {
         _favLoaded = true;
       });
     }
+  }
+
+  Future<void> _loadReports() async {
+    try {
+      final summary =
+          await _reportsService.getSummary(widget.station.placeId);
+      final mine = await _reportsService.getMyReport(widget.station.placeId);
+      if (!mounted) return;
+      setState(() {
+        _summary = summary;
+        _myReport = mine;
+        _reportsLoading = false;
+        _reportsAvailable = true;
+      });
+    } catch (_) {
+      // Backend not reachable / migration not applied yet — degrade quietly.
+      if (!mounted) return;
+      setState(() {
+        _reportsLoading = false;
+        _reportsAvailable = false;
+      });
+    }
+  }
+
+  Future<void> _submitReport(String status) async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      if (_myReport == status) {
+        // Tapping your current vote retracts it.
+        await _reportsService.retract(widget.station.placeId);
+        _myReport = null;
+      } else {
+        await _reportsService.report(widget.station.placeId, status);
+        _myReport = status;
+      }
+      final summary =
+          await _reportsService.getSummary(widget.station.placeId);
+      if (!mounted) return;
+      setState(() => _summary = summary);
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not submit your report.')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  String _timeAgo(DateTime time) {
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 
   Future<void> _toggleFavorite() async {
@@ -545,6 +612,8 @@ class _StationDetailsSheetState extends State<_StationDetailsSheet> {
                 );
               }),
             ],
+            const SizedBox(height: 12),
+            _buildCommunitySection(),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: widget.onDirections,
@@ -567,6 +636,124 @@ class _StationDetailsSheetState extends State<_StationDetailsSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Community reliability: aggregate status + the user's own report buttons.
+  Widget _buildCommunitySection() {
+    if (_reportsLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            SizedBox(
+              height: 16,
+              width: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 8),
+            Text('Loading community status…'),
+          ],
+        ),
+      );
+    }
+
+    if (!_reportsAvailable) {
+      return const SizedBox.shrink();
+    }
+
+    final summary = _summary ?? StationStatusSummary.empty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(),
+        const Text(
+          'Is it working?',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 6),
+        _buildStatusLine(summary),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _reportButton(
+                label: 'Working',
+                icon: Icons.check_circle,
+                color: Colors.green,
+                selected: _myReport == ReportStatus.working,
+                onTap: () => _submitReport(ReportStatus.working),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _reportButton(
+                label: 'Not working',
+                icon: Icons.cancel,
+                color: Colors.red,
+                selected: _myReport == ReportStatus.notWorking,
+                onTap: () => _submitReport(ReportStatus.notWorking),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusLine(StationStatusSummary summary) {
+    if (!summary.hasReports) {
+      return const Text(
+        'No reports yet — be the first to help other drivers.',
+        style: TextStyle(fontSize: 14, color: Colors.black54),
+      );
+    }
+
+    final pct = (summary.workingRatio! * 100).round();
+    final good = pct >= 50;
+    final lastText = summary.lastReported != null
+        ? ' · last ${_timeAgo(summary.lastReported!)}'
+        : '';
+
+    return Row(
+      children: [
+        Icon(
+          good ? Icons.thumb_up : Icons.warning_amber_rounded,
+          size: 18,
+          color: good ? Colors.green : Colors.orange,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            '$pct% report working · ${summary.totalCount} '
+            '${summary.totalCount == 1 ? 'report' : 'reports'}$lastText',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _reportButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: _submitting ? null : onTap,
+      icon: Icon(icon, size: 18, color: selected ? Colors.white : color),
+      label: Text(
+        label,
+        style: TextStyle(color: selected ? Colors.white : color),
+      ),
+      style: OutlinedButton.styleFrom(
+        backgroundColor: selected ? color : Colors.transparent,
+        side: BorderSide(color: color),
+        padding: const EdgeInsets.symmetric(vertical: 10),
       ),
     );
   }
