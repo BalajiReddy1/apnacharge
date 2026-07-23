@@ -1,6 +1,12 @@
-import 'dart:math';
-
+/// Domain model for an EV charging station.
+///
+/// Data is sourced from the Open Charge Map API (https://openchargemap.org),
+/// a free and open global registry of EV charging locations. Unlike the old
+/// implementation, none of these fields are randomly generated — they reflect
+/// the real attributes returned by the API (operator, connector types, power,
+/// operational status, usage cost, etc.).
 class ChargingStationDetails {
+  /// Stable identifier. Corresponds to the Open Charge Map POI `ID`.
   final String placeId;
   final String name;
   final String address;
@@ -8,18 +14,27 @@ class ChargingStationDetails {
   final double longitude;
   final String? phoneNumber;
   final String? website;
-  final double? rating;
-  final bool? openNow;
-  final List<Review>? reviews;
 
-  // Extra dummy fields (including status)
-  final int numberOfConnectors;
-  final List<String> connectorTypes;
-  final String status; // Newly added field
-  final double pricePer15Min;
-  final String timing;
-  final bool isPublic;
-  final String capacity;
+  /// Network / operator that runs the station (e.g. "Tata Power", "Statiq").
+  final String? operatorName;
+
+  /// Whether the station is currently operational, when known.
+  final bool? isOperational;
+
+  /// Human-readable status title (e.g. "Operational", "Planned").
+  final String? statusTitle;
+
+  /// Access type, e.g. "Public", "Private - Restricted Access".
+  final String? usageType;
+
+  /// Free-form cost description as provided by the operator (e.g. "₹18/kWh").
+  final String? usageCost;
+
+  /// Total number of charge points at this location, when known.
+  final int? numberOfPoints;
+
+  /// The individual connectors available at the station.
+  final List<Connection> connections;
 
   ChargingStationDetails({
     required this.placeId,
@@ -29,53 +44,83 @@ class ChargingStationDetails {
     required this.longitude,
     this.phoneNumber,
     this.website,
-    this.rating,
-    this.openNow,
-    this.reviews,
-    // Dummy fields
-    required this.numberOfConnectors,
-    required this.connectorTypes,
-    required this.status,
-    required this.pricePer15Min,
-    required this.timing,
-    required this.isPublic,
-    required this.capacity,
+    this.operatorName,
+    this.isOperational,
+    this.statusTitle,
+    this.usageType,
+    this.usageCost,
+    this.numberOfPoints,
+    this.connections = const [],
   });
 
-  factory ChargingStationDetails.fromJson(Map<String, dynamic> json) {
-    final location = json['geometry']['location'];
-    // Generate dummy data for extra fields.
-    DummyData dummy = DummyDataGenerator.generateDummyData();
+  /// Distinct connector types across all connections (e.g. ["CCS", "Type 2"]).
+  List<String> get connectorTypes =>
+      connections.map((c) => c.type).where((t) => t.isNotEmpty).toSet().toList();
+
+  /// Number of physical connectors. Falls back to the sum of connection
+  /// quantities when the API doesn't report an explicit point count.
+  int get numberOfConnectors {
+    if (numberOfPoints != null && numberOfPoints! > 0) return numberOfPoints!;
+    final sum = connections.fold<int>(0, (acc, c) => acc + (c.quantity ?? 1));
+    return sum > 0 ? sum : connections.length;
+  }
+
+  /// Highest power rating (kW) among the connectors, when known.
+  double? get maxPowerKW {
+    final powers = connections
+        .map((c) => c.powerKW)
+        .whereType<double>()
+        .where((p) => p > 0)
+        .toList();
+    if (powers.isEmpty) return null;
+    return powers.reduce((a, b) => a > b ? a : b);
+  }
+
+  /// A short label describing whether the station is public or private.
+  String get accessLabel {
+    if (usageType == null) return 'Unknown';
+    return usageType!.toLowerCase().contains('public') ? 'Public' : 'Private';
+  }
+
+  /// Parse a single POI object from the Open Charge Map `/poi` response.
+  factory ChargingStationDetails.fromOcm(Map<String, dynamic> json) {
+    final addressInfo = json['AddressInfo'] as Map<String, dynamic>? ?? {};
+    final operatorInfo = json['OperatorInfo'] as Map<String, dynamic>?;
+    final statusType = json['StatusType'] as Map<String, dynamic>?;
+    final usageTypeInfo = json['UsageType'] as Map<String, dynamic>?;
+    final connectionsJson = json['Connections'] as List<dynamic>? ?? [];
+
+    final addressParts = <String?>[
+      addressInfo['AddressLine1'] as String?,
+      addressInfo['AddressLine2'] as String?,
+      addressInfo['Town'] as String?,
+      addressInfo['StateOrProvince'] as String?,
+    ].where((p) => p != null && p.trim().isNotEmpty).toList();
 
     return ChargingStationDetails(
-      placeId: json['place_id'] as String,
-      name: json['name'] as String,
-      address: json['vicinity'] as String,
-      latitude: location['lat'] as double,
-      longitude: location['lng'] as double,
-      phoneNumber: json['formatted_phone_number'],
-      website: json['website'],
-      rating: json['rating'] != null ? (json['rating'] as num).toDouble() : null,
-      openNow: json['opening_hours'] != null &&
-              json['opening_hours']['open_now'] != null
-          ? json['opening_hours']['open_now'] as bool
-          : null,
-      reviews: json['reviews'] != null
-          ? (json['reviews'] as List)
-              .map((reviewJson) => Review.fromJson(reviewJson))
-              .toList()
-          : null,
-      // Attach dummy values
-      numberOfConnectors: dummy.numberOfConnectors,
-      connectorTypes: dummy.connectorTypes,
-      status: dummy.status,
-      pricePer15Min: dummy.pricePer15Min,
-      timing: dummy.timing,
-      isPublic: dummy.isPublic,
-      capacity: dummy.capacity,
+      placeId: json['ID'].toString(),
+      name: (addressInfo['Title'] as String?) ?? 'Charging Station',
+      address: addressParts.isNotEmpty
+          ? addressParts.join(', ')
+          : 'Address unavailable',
+      latitude: (addressInfo['Latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (addressInfo['Longitude'] as num?)?.toDouble() ?? 0.0,
+      phoneNumber: addressInfo['ContactTelephone1'] as String?,
+      website: addressInfo['RelatedURL'] as String?,
+      operatorName: operatorInfo?['Title'] as String?,
+      isOperational: statusType?['IsOperational'] as bool?,
+      statusTitle: statusType?['Title'] as String?,
+      usageType: usageTypeInfo?['Title'] as String?,
+      usageCost: json['UsageCost'] as String?,
+      numberOfPoints: (json['NumberOfPoints'] as num?)?.toInt(),
+      connections: connectionsJson
+          .whereType<Map<String, dynamic>>()
+          .map(Connection.fromOcm)
+          .toList(),
     );
   }
 
+  /// Serialize to our own compact JSON shape (used for local favorites).
   Map<String, dynamic> toJson() {
     return {
       'placeId': placeId,
@@ -83,102 +128,86 @@ class ChargingStationDetails {
       'address': address,
       'latitude': latitude,
       'longitude': longitude,
-      'rating': rating,
-      'numberOfConnectors': numberOfConnectors,
-      'connectorTypes': connectorTypes,
-      'status': status,
-      'pricePer15Min': pricePer15Min,
-      'timing': timing,
-      'isPublic': isPublic,
-      'capacity': capacity,
+      'phoneNumber': phoneNumber,
+      'website': website,
+      'operatorName': operatorName,
+      'isOperational': isOperational,
+      'statusTitle': statusTitle,
+      'usageType': usageType,
+      'usageCost': usageCost,
+      'numberOfPoints': numberOfPoints,
+      'connections': connections.map((c) => c.toJson()).toList(),
     };
   }
-}
 
-class Review {
-  final String authorName;
-  final double rating;
-  final String text;
-
-  Review({
-    required this.authorName,
-    required this.rating,
-    required this.text,
-  });
-
-  factory Review.fromJson(Map<String, dynamic> json) {
-    return Review(
-      authorName: json['author_name'] ?? '',
-      rating: json['rating'] != null ? (json['rating'] as num).toDouble() : 0.0,
-      text: json['text'] ?? '',
+  /// Reconstruct from our own [toJson] shape. This is symmetric with
+  /// [toJson], which is what makes favorites round-trip correctly.
+  factory ChargingStationDetails.fromJson(Map<String, dynamic> json) {
+    return ChargingStationDetails(
+      placeId: json['placeId'].toString(),
+      name: json['name'] as String? ?? 'Charging Station',
+      address: json['address'] as String? ?? '',
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+      phoneNumber: json['phoneNumber'] as String?,
+      website: json['website'] as String?,
+      operatorName: json['operatorName'] as String?,
+      isOperational: json['isOperational'] as bool?,
+      statusTitle: json['statusTitle'] as String?,
+      usageType: json['usageType'] as String?,
+      usageCost: json['usageCost'] as String?,
+      numberOfPoints: (json['numberOfPoints'] as num?)?.toInt(),
+      connections: (json['connections'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(Connection.fromJson)
+          .toList(),
     );
   }
 }
 
-// Helper class to hold dummy values.
-class DummyData {
-  final int numberOfConnectors;
-  final List<String> connectorTypes;
-  final String status;
-  final double pricePer15Min;
-  final String timing;
-  final bool isPublic;
-  final String capacity;
+/// A single connector at a charging station.
+class Connection {
+  /// Connector type title, e.g. "CCS (Type 2)", "Type 2 (Socket Only)".
+  final String type;
 
-  DummyData({
-    required this.numberOfConnectors,
-    required this.connectorTypes,
-    required this.status,
-    required this.pricePer15Min,
-    required this.timing,
-    required this.isPublic,
-    required this.capacity,
+  /// Power rating in kW, when reported.
+  final double? powerKW;
+
+  /// How many of this connector exist at the station.
+  final int? quantity;
+
+  /// "AC (Single-Phase)", "DC", etc.
+  final String? currentType;
+
+  Connection({
+    required this.type,
+    this.powerKW,
+    this.quantity,
+    this.currentType,
   });
-}
 
-// Dummy data generator for extra fields.
-class DummyDataGenerator {
-  static DummyData generateDummyData() {
-    final random = Random();
-
-    int numberOfConnectors = random.nextInt(5) + 1; // 1 to 5 connectors
-
-    List<String> availableConnectorTypes = [
-      'Type1',
-      'Type2',
-      'CCS',
-      'CHAdeMO',
-      'Tesla',
-      'GB/T',
-      'Other'
-    ];
-    availableConnectorTypes.shuffle(random);
-    int count = random.nextInt(3) + 1; // Pick between 1 and 3 types.
-    List<String> connectorTypes = availableConnectorTypes.take(count).toList();
-
-    // Generate random status.
-    String status = random.nextBool() ? "Open" : "Closed";
-
-    // Price per 15 minutes.
-    double pricePer15Min = (random.nextInt(11) + 5).toDouble(); // between 5 and 15
-
-    // Timing
-    String timing = random.nextBool() ? "24 Hours" : "9:00 AM - 10:00 PM";
-
-    // Public or Private.
-    bool isPublic = random.nextBool();
-
-    List<String> capacities = ["25 kW", "50 kW", "75 kW", "100 kW"];
-    String capacity = capacities[random.nextInt(capacities.length)];
-
-    return DummyData(
-      numberOfConnectors: numberOfConnectors,
-      connectorTypes: connectorTypes,
-      status: status,
-      pricePer15Min: pricePer15Min,
-      timing: timing,
-      isPublic: isPublic,
-      capacity: capacity,
+  factory Connection.fromOcm(Map<String, dynamic> json) {
+    final connectionType = json['ConnectionType'] as Map<String, dynamic>?;
+    final currentTypeInfo = json['CurrentType'] as Map<String, dynamic>?;
+    return Connection(
+      type: (connectionType?['Title'] as String?) ?? 'Unknown',
+      powerKW: (json['PowerKW'] as num?)?.toDouble(),
+      quantity: (json['Quantity'] as num?)?.toInt(),
+      currentType: currentTypeInfo?['Title'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        'powerKW': powerKW,
+        'quantity': quantity,
+        'currentType': currentType,
+      };
+
+  factory Connection.fromJson(Map<String, dynamic> json) => Connection(
+        type: json['type'] as String? ?? 'Unknown',
+        powerKW: (json['powerKW'] as num?)?.toDouble(),
+        quantity: (json['quantity'] as num?)?.toInt(),
+        currentType: json['currentType'] as String?,
+      );
 }
