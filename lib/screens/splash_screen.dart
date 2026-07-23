@@ -1,9 +1,8 @@
 // splash_screen.dart
 
 import 'dart:async';
-import 'package:ev_app/screens/login_screen.dart';
 import 'package:flutter/material.dart';
-import 'home_screen.dart'; // Make sure you have a HomeScreen widget created in home_screen.dart
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -17,11 +16,14 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
 
-    // Wait for 2 seconds before navigating to the HomeScreen
+    // Brief splash, then route based on whether a session already exists.
+    // A logged-in user skips the login screen entirely.
     Timer(const Duration(seconds: 3), () {
-      Navigator.pushReplacement(
+      if (!mounted) return;
+      final session = Supabase.instance.client.auth.currentSession;
+      Navigator.pushReplacementNamed(
         context,
-        MaterialPageRoute(builder: (context) => LoginScreen()),
+        session != null ? '/home' : '/login',
       );
     });
   }

@@ -2,6 +2,7 @@ import 'package:ev_app/const/colors.dart';
 import 'package:ev_app/screens/favorites_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({Key? key}) : super(key: key);
@@ -88,8 +89,36 @@ class AppDrawer extends StatelessWidget {
               // );
             },
           ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(
+              Icons.logout,
+              color: Colors.white,
+            ),
+            title: Text('Sign Out',
+                style: GoogleFonts.arimo(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 1)),
+            onTap: () => _signOut(context),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _signOut(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await Supabase.instance.client.auth.signOut();
+      // Clear the navigation stack and return to login.
+      navigator.pushNamedAndRemoveUntil('/login', (route) => false);
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not sign out. Try again.')),
+      );
+    }
   }
 }
