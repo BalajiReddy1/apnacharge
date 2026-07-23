@@ -9,20 +9,23 @@ Users can **sign up/login** securely using **Supabase authentication** and searc
 ## 📌 **Features**
 
 ✔ **User Authentication with Supabase** – Secure login and registration.  
-✔ **EV Charging Station Locator** – Fetches real-time station locations via Google Places API.  
-✔ **Custom Markers & Interactive Map** – Tapping a marker opens a **bottom sheet** with details.  
-✔ **Search Functionality** – Users can find stations by name or location.  
-✔ **Smart Route Planner** – Optimizes trips with charging stops for EV range management.  
-✔ **Optimized UI/UX** – Fully refined interface for smooth navigation.  
+✔ **Real EV Charging Data** – Live station data from the **Open Charge Map** API: operator, connector types, power (kW), operational status and pricing.  
+✔ **Custom Markers & Interactive Map** – Tapping a marker opens a **bottom sheet** with real station details.  
+✔ **Favorites** – Save stations locally and reopen directions in one tap.  
+✔ **Search Functionality** – Find locations via Google Places autocomplete.  
+✔ **Smart Route Planner** – Plan trips and surface charging stops along the way.  
+✔ **Optimized UI/UX** – Refined interface for smooth navigation.  
 
 ---
 
 ## 🛠️ **Built With**
 - **Flutter** – UI development framework
 - **Google Maps Flutter** – Map integration
-- **Google Places API** – Fetching EV charging station data
-- **Location** – Getting user’s current location
+- **Open Charge Map API** – Real EV charging station data
+- **Google Places API** – Location search / autocomplete
+- **Location / Geolocator** – Getting the user’s current location
 - **Supabase** – Authentication & backend services
+- **flutter_dotenv** – Environment-based secret management
 
 ---
 
@@ -42,52 +45,34 @@ flutter pub get
 
 ## 🔑 Environment Variables
 
-Before running the app, configure Google Maps API and Supabase credentials.
+All secrets live in a git-ignored `.env` file (loaded via `flutter_dotenv`).
+Never commit real keys.
 
-🔹 **Google Places API Key Setup**:
+1. Copy the template:
+   ```bash
+   cp .env.example .env
+   ```
+2. Fill in your values in `.env`:
+   ```dotenv
+   SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+   SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+   GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
+   OPEN_CHARGE_MAP_API_KEY=YOUR_OPEN_CHARGE_MAP_API_KEY   # free: openchargemap.org
+   MAPBOX_ACCESS_TOKEN=YOUR_MAPBOX_ACCESS_TOKEN           # optional (future map layer)
+   ```
+3. The **native Android map** needs the Google key separately in
+   `android/app/src/main/AndroidManifest.xml`:
+   ```xml
+   <meta-data
+     android:name="com.google.android.geo.API_KEY"
+     android:value="YOUR_GOOGLE_MAPS_API_KEY" />
+   ```
+   For **iOS**, add it to `ios/Runner/AppDelegate` / `Info.plist` as required by
+   `google_maps_flutter`.
 
-  📌 For Android
-  
-  Open android/app/src/main/AndroidManifest.xml and add:
-  ```bash
-  <meta-data
-    android:name="com.google.android.geo.API_KEY"
-    android:value="YOUR_GOOGLE_MAPS_API_KEY" />
-  ```
-  📌 For iOS
-
-  Open ios/Runner/Info.plist and add:
-
-  ```bash
-  <key>GMSApiKey</key>
-<string>YOUR_GOOGLE_MAPS_API_KEY</string>
-
-  ```
-
-🔹 **Supabase Configuration**:
-
-  Create lib/constants.dart and add:
-  ```bash
-  const String supabaseUrl = "YOUR_SUPABASE_URL";
-  const String supabaseAnonKey = "YOUR_SUPABASE_ANON_KEY";
-  ```
-
-  Import this into main.dart for initializing Supabase:
-  ```bash
-  import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'constants.dart'; // Import Supabase keys
-import 'login_page.dart';
-
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
-  );
-  runApp(const MyApp());
-}
-  ```
+> **Note:** Open Charge Map provides the charging-station data and is free — no
+> key is strictly required for light usage, but registering for one raises your
+> rate limits.
 
 ⚡ **Usage**
 
