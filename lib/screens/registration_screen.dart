@@ -1,4 +1,5 @@
 import 'package:ev_app/const/colors.dart';
+import 'package:ev_app/utils/validators.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -26,42 +27,51 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   }
 
   Future<void> _register() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    // Field-level validation with specific messages.
+    final error = Validators.name(name) ??
+        Validators.email(email) ??
+        Validators.password(password) ??
+        (!_agreeTerms
+            ? 'Please agree to the Terms and Conditions'
+            : null);
+    if (error != null) {
+      setState(() => _errorMessage = error);
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = '';
     });
 
-    final name = _nameController.text.trim();
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-
-    // Basic validation check.
-    if (name.isEmpty || email.isEmpty || password.isEmpty || !_agreeTerms) {
-      setState(() {
-        _errorMessage =
-            "Please fill all fields and agree to the Terms and Conditions.";
-        _isLoading = false;
-      });
-      return;
-    }
-
     try {
-      final res = await Supabase.instance.client.auth.signUp(
+      await Supabase.instance.client.auth.signUp(
         email: email,
         password: password,
         data: {'name': name},
       );
-
-      // If successful, navigate to the login screen.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Account created. Please sign in.'),
+        ),
+      );
       Navigator.pushReplacementNamed(context, '/login');
-    } catch (error) {
+    } catch (err) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = error.toString();
+        _errorMessage = Validators.authError(err);
       });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -205,16 +215,17 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           style: TextStyle(fontSize: 14),
                         ),
                       ),
-                      if (_errorMessage.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(
-                            _errorMessage,
-                            style: const TextStyle(color: Colors.red),
-                          ),
-                        ),
                     ],
                   ),
+                  if (_errorMessage.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        _errorMessage,
+                        style: const TextStyle(
+                            color: Colors.red, fontWeight: FontWeight.w500),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -246,18 +257,29 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           height: 65,
                           width: 220,
                           child: ElevatedButton(
-                            onPressed: _register,
+                            onPressed: _isLoading ? null : _register,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.darkestbg,
+                              disabledBackgroundColor:
+                                  AppColors.darkestbg.withOpacity(0.6),
                               padding: const EdgeInsets.all(20),
                             ),
-                            child: Text(
-                              'Sign Up',
-                              style: GoogleFonts.arima(
-                                  fontSize: 20,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold),
-                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 22,
+                                    width: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2.5,
+                                    ),
+                                  )
+                                : Text(
+                                    'Sign Up',
+                                    style: GoogleFonts.arima(
+                                        fontSize: 20,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold),
+                                  ),
                           ),
                         ),
                         // "Already have an account? Sign in" row.

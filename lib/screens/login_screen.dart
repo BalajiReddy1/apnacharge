@@ -1,5 +1,6 @@
 import 'package:ev_app/const/colors.dart';
 import 'package:ev_app/screens/registration_screen.dart';
+import 'package:ev_app/utils/validators.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -25,30 +26,41 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
+    // Client-side validation before hitting the network.
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    final emailError = Validators.email(email);
+    final passwordError =
+        password.isEmpty ? 'Password is required' : null;
+    if (emailError != null || passwordError != null) {
+      setState(() => _errorMessage = emailError ?? passwordError!);
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = '';
     });
 
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-
     try {
-      // Call Supabase to sign in with email and password.
       await Supabase.instance.client.auth.signInWithPassword(
         email: email,
         password: password,
       );
-      // On successful sign in, navigate to Home screen.
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
     } catch (error) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = error.toString();
+        _errorMessage = Validators.authError(error);
       });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -176,26 +188,46 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
 
-            SizedBox(height: 100),
+            // Inline error message (safe, user-friendly).
+            if (_errorMessage.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Text(
+                  _errorMessage,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.red, fontWeight: FontWeight.w500),
+                ),
+              ),
+            SizedBox(height: 40),
             // "Go" Button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 70.0),
               child: Container(
                 height: 65,
-                width: 80,
                 child: ElevatedButton(
-                  onPressed: _login,
+                  onPressed: _isLoading ? null : _login,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.medgreen,
+                    disabledBackgroundColor: AppColors.medgreen.withOpacity(0.5),
                     padding: EdgeInsets.symmetric(vertical: 16.0),
                   ),
-                  child: Text(
-                    'Sign In',
-                    style: GoogleFonts.arima(
-                        fontSize: 22,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : Text(
+                          'Sign In',
+                          style: GoogleFonts.arima(
+                              fontSize: 22,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold),
+                        ),
                 ),
               ),
             ),
