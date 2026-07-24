@@ -2,6 +2,7 @@ import 'package:ev_app/const/colors.dart';
 import 'package:ev_app/screens/registration_screen.dart';
 import 'package:ev_app/utils/validators.dart';
 import 'package:ev_app/widgets/forgot_password_sheet.dart';
+import 'package:ev_app/widgets/google_sign_in_button.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -228,6 +229,30 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontWeight: FontWeight.bold),
                         ),
                 ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Divider with "or"
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Row(
+                children: const [
+                  Expanded(child: Divider()),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('or', style: TextStyle(color: Colors.black54)),
+                  ),
+                  Expanded(child: Divider()),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Google Sign-In
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: GoogleSignInButton(
+                onSignedIn: () =>
+                    Navigator.pushReplacementNamed(context, '/home'),
               ),
             ),
             SizedBox(height: 20),

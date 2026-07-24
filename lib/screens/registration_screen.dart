@@ -2,6 +2,7 @@ import 'package:ev_app/const/colors.dart';
 import 'package:ev_app/screens/legal_document_screen.dart';
 import 'package:ev_app/utils/validators.dart';
 import 'package:ev_app/widgets/forgot_password_sheet.dart';
+import 'package:ev_app/widgets/google_sign_in_button.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -269,6 +270,23 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                             color: Colors.red, fontWeight: FontWeight.w500),
                       ),
                     ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: const [
+                      Expanded(child: Divider()),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child:
+                            Text('or', style: TextStyle(color: Colors.black54)),
+                      ),
+                      Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  GoogleSignInButton(
+                    onSignedIn: () =>
+                        Navigator.pushReplacementNamed(context, '/home'),
+                  ),
                 ],
               ),
             ),

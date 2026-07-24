@@ -74,6 +74,27 @@ Never commit real keys.
 > key is strictly required for light usage, but registering for one raises your
 > rate limits.
 
+## 🔐 Google Sign-In Setup
+
+The app supports email/password **and** Google sign-in (native ID-token flow via
+Supabase). To enable Google sign-in:
+
+1. In **Google Cloud Console → Credentials**, create OAuth 2.0 client IDs:
+   - a **Web** client ID (used as the Supabase server client ID on all platforms),
+   - an **Android** client ID (register your app's SHA-1 fingerprint),
+   - an **iOS** client ID.
+2. Put the Web and iOS client IDs in `.env`
+   (`GOOGLE_WEB_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`).
+3. In the **Supabase dashboard → Authentication → Providers → Google**, enable
+   Google and add the **Web client ID** under authorized client IDs.
+4. **iOS:** add your iOS client ID's reversed form to
+   `ios/Runner/Info.plist` as a `CFBundleURLSchemes` entry.
+5. **Android:** no client ID is needed in code; just ensure the SHA-1 is
+   registered in the Google Cloud project.
+
+The Google button is hidden-safe: if `GOOGLE_WEB_CLIENT_ID` is unset it shows a
+clear "not configured" message instead of crashing.
+
 ⚡ **Usage**
 
   **Run the App**:
