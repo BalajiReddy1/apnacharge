@@ -1,5 +1,6 @@
 import 'package:ev_app/const/colors.dart';
 import 'package:ev_app/screens/favorites_screen.dart';
+import 'package:ev_app/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -60,12 +61,12 @@ class AppDrawer extends StatelessWidget {
             ),
             onTap: () {
               Navigator.pop(context);
-              // Navigator.push(
-              //   context,
-              //   MaterialPageRoute(
-              //     builder: (context) => const SettingsScreen(),
-              //   ),
-              // );
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SettingsScreen(),
+                ),
+              );
             },
           ),
           ListTile(
@@ -81,12 +82,18 @@ class AppDrawer extends StatelessWidget {
                     letterSpacing: 1)),
             onTap: () {
               Navigator.pop(context);
-              // Navigator.push(
-              //   context,
-              //   MaterialPageRoute(
-              //     builder: (context) => const AboutScreen(),
-              //   ),
-              // );
+              showAboutDialog(
+                context: context,
+                applicationName: 'Apna Charge',
+                applicationLegalese: '© 2026 Apna Charge',
+                children: [
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Find EV charging stations, check community reliability, '
+                    'and plan routes with charging stops.',
+                  ),
+                ],
+              );
             },
           ),
           const Divider(color: Colors.white24),

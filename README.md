@@ -97,6 +97,23 @@ only touch their own report) and a `get_station_status_summary` function that
 exposes aggregate counts only. The feature degrades gracefully if the migration
 hasn't been applied yet.
 
+**Account deletion (required by Google Play / DPDP / GDPR):** the in-app
+"Delete Account" button calls a Supabase Edge Function that removes the auth
+user (their reports cascade-delete). Deploy it once:
+
+```bash
+supabase functions deploy delete-account
+```
+
+## ⚖️ Legal documents
+
+`PRIVACY_POLICY.md` and `TERMS_OF_SERVICE.md` (repo root) are shown in-app under
+**Settings → Legal** and should also be hosted at a public URL for the Play
+Store listing. Before publishing, **fill in every `[PLACEHOLDER]`** (legal name,
+contact email, Grievance Officer, effective date, jurisdiction) and have the
+documents reviewed by a legal/privacy professional. They are drafted from
+current guidance but are not a substitute for legal advice.
+
 
 🤝  **Contributing**
 

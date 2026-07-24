@@ -1,4 +1,5 @@
 import 'package:ev_app/const/colors.dart';
+import 'package:ev_app/screens/legal_document_screen.dart';
 import 'package:ev_app/utils/validators.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -23,6 +24,31 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   void _forgotPassword() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Forgot Password tapped")),
+    );
+  }
+
+  Widget _legalLink(String label, String title, String assetPath) {
+    return TextButton(
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              LegalDocumentScreen(title: title, assetPath: assetPath),
+        ),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 13,
+          color: Colors.blueAccent,
+          decoration: TextDecoration.underline,
+        ),
+      ),
     );
   }
 
@@ -211,11 +237,28 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       ),
                       const Expanded(
                         child: Text(
-                          'I agree to the Terms and Conditions',
+                          'I agree to the Terms of Service and Privacy Policy',
                           style: TextStyle(fontSize: 14),
                         ),
                       ),
                     ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Wrap(
+                      children: [
+                        _legalLink(
+                          'View Terms',
+                          'Terms of Service',
+                          'TERMS_OF_SERVICE.md',
+                        ),
+                        _legalLink(
+                          'View Privacy Policy',
+                          'Privacy Policy',
+                          'PRIVACY_POLICY.md',
+                        ),
+                      ],
+                    ),
                   ),
                   if (_errorMessage.isNotEmpty)
                     Padding(
