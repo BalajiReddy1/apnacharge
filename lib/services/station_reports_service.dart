@@ -1,3 +1,4 @@
+import 'package:ev_app/models/station_report.dart';
 import 'package:ev_app/models/station_status_summary.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -53,8 +54,9 @@ class StationReportsService {
     return row == null ? null : row['status'] as String?;
   }
 
-  /// Submit or change the current user's report for a station.
-  Future<void> report(String stationId, String status) async {
+  /// Submit or change the current user's report for a station, with an
+  /// optional note (max 280 chars, trimmed; empty becomes null).
+  Future<void> report(String stationId, String status, {String? note}) async {
     if (!ReportStatus._allowed.contains(status)) {
       throw ArgumentError('Invalid report status: $status');
     }
@@ -62,12 +64,36 @@ class StationReportsService {
       throw StateError('You must be signed in to report a station.');
     }
 
+    final trimmed = note?.trim();
+    final cleanNote = (trimmed == null || trimmed.isEmpty)
+        ? null
+        : (trimmed.length > 280 ? trimmed.substring(0, 280) : trimmed);
+
     // One report per (station, user): upsert on the unique key. user_id is
     // filled server-side from auth.uid() and validated by RLS.
     await _client.from(_table).upsert(
-      {'station_id': stationId, 'status': status},
+      {'station_id': stationId, 'status': status, 'note': cleanNote},
       onConflict: 'station_id,user_id',
     );
+  }
+
+  /// Recent community reports that include a note (newest first). Contains no
+  /// reporter identity.
+  Future<List<StationReport>> getRecentReports(
+    String stationId, {
+    int limit = 5,
+  }) async {
+    final result = await _client.rpc(
+      'get_station_recent_reports',
+      params: {'p_station_id': stationId, 'p_limit': limit},
+    );
+    if (result is List) {
+      return result
+          .whereType<Map<String, dynamic>>()
+          .map(StationReport.fromRpc)
+          .toList();
+    }
+    return const [];
   }
 
   /// Retract the current user's report for a station.

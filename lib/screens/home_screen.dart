@@ -9,6 +9,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:ev_app/models/charging_station_details.dart';
 import 'package:ev_app/models/station_filter.dart';
+import 'package:ev_app/models/station_report.dart';
 import 'package:ev_app/models/station_status_summary.dart';
 import 'package:ev_app/services/open_charge_map_service.dart';
 import 'package:ev_app/services/places_services.dart';
@@ -598,15 +599,23 @@ class _StationDetailsSheetState extends State<_StationDetailsSheet> {
 
   StationStatusSummary? _summary;
   String? _myReport;
+  List<StationReport> _recentReports = const [];
   bool _reportsLoading = true;
   bool _reportsAvailable = true;
   bool _submitting = false;
+  final TextEditingController _noteController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadFavorite();
     _loadReports();
+  }
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadFavorite() async {
@@ -624,10 +633,13 @@ class _StationDetailsSheetState extends State<_StationDetailsSheet> {
       final summary =
           await _reportsService.getSummary(widget.station.placeId);
       final mine = await _reportsService.getMyReport(widget.station.placeId);
+      final recent =
+          await _reportsService.getRecentReports(widget.station.placeId);
       if (!mounted) return;
       setState(() {
         _summary = summary;
         _myReport = mine;
+        _recentReports = recent;
         _reportsLoading = false;
         _reportsAvailable = true;
       });
@@ -641,26 +653,53 @@ class _StationDetailsSheetState extends State<_StationDetailsSheet> {
     }
   }
 
+  Future<void> _refreshReports() async {
+    final summary = await _reportsService.getSummary(widget.station.placeId);
+    final recent =
+        await _reportsService.getRecentReports(widget.station.placeId);
+    if (!mounted) return;
+    setState(() {
+      _summary = summary;
+      _recentReports = recent;
+    });
+  }
+
   Future<void> _submitReport(String status) async {
     if (_submitting) return;
     setState(() => _submitting = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      if (_myReport == status) {
-        // Tapping your current vote retracts it.
-        await _reportsService.retract(widget.station.placeId);
-        _myReport = null;
-      } else {
-        await _reportsService.report(widget.station.placeId, status);
-        _myReport = status;
-      }
-      final summary =
-          await _reportsService.getSummary(widget.station.placeId);
-      if (!mounted) return;
-      setState(() => _summary = summary);
+      await _reportsService.report(
+        widget.station.placeId,
+        status,
+        note: _noteController.text,
+      );
+      _myReport = status;
+      _noteController.clear();
+      await _refreshReports();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Thanks! Your report was submitted.')),
+      );
     } catch (_) {
       messenger.showSnackBar(
         const SnackBar(content: Text('Could not submit your report.')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _retractReport() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _reportsService.retract(widget.station.placeId);
+      _myReport = null;
+      await _refreshReports();
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not remove your report.')),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -889,6 +928,21 @@ class _StationDetailsSheetState extends State<_StationDetailsSheet> {
         const SizedBox(height: 6),
         _buildStatusLine(summary),
         const SizedBox(height: 10),
+        // Optional note shared with other drivers.
+        TextField(
+          controller: _noteController,
+          maxLength: 280,
+          minLines: 1,
+          maxLines: 3,
+          textInputAction: TextInputAction.newline,
+          decoration: const InputDecoration(
+            hintText: 'Add a note (optional) — visible to other drivers',
+            border: OutlineInputBorder(),
+            isDense: true,
+            counterText: '',
+          ),
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
@@ -912,7 +966,58 @@ class _StationDetailsSheetState extends State<_StationDetailsSheet> {
             ),
           ],
         ),
+        if (_myReport != null)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _submitting ? null : _retractReport,
+              child: const Text('Remove my report'),
+            ),
+          ),
+        if (_recentReports.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Recent reports',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          ..._recentReports.map(_buildRecentReportRow),
+        ],
       ],
+    );
+  }
+
+  Widget _buildRecentReportRow(StationReport report) {
+    final timeText = report.reportedAt != null
+        ? _timeAgo(report.reportedAt!)
+        : '';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            report.isWorking ? Icons.check_circle : Icons.cancel,
+            size: 18,
+            color: report.isWorking ? Colors.green : Colors.red,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (report.note != null && report.note!.isNotEmpty)
+                  Text(report.note!, style: const TextStyle(fontSize: 14)),
+                Text(
+                  '${report.isWorking ? 'Working' : 'Not working'}'
+                  '${timeText.isNotEmpty ? ' · $timeText' : ''}',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
