@@ -45,6 +45,12 @@ class FavoritesManager {
     return await prefs.setStringList(favoritesKey, favoritesJsonList);
   }
 
+  /// Remove all locally stored favorites (used when deleting the account).
+  static Future<bool> clear() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    return await prefs.remove(favoritesKey);
+  }
+
   static Future<bool> isFavorite(String placeId) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String>? favoritesJsonList = prefs.getStringList(favoritesKey);
