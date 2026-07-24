@@ -509,6 +509,19 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                     const Divider(height: 1),
+                    if (stations.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Center(
+                          child: Text(
+                            _filter.isActive
+                                ? 'No stations match your filters here.'
+                                : 'No stations found here yet.\nTry moving the map.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.black54),
+                          ),
+                        ),
+                      ),
                   ],
                 );
               }
