@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ev_app/models/charging_station_details.dart';
 import 'package:ev_app/models/station_filter.dart';
 import 'package:ev_app/models/station_report.dart';
@@ -46,11 +47,51 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  static const String _locationDisclosureKey = 'location_disclosure_accepted';
+
   @override
   void initState() {
     super.initState();
+    // Show the prominent location disclosure before requesting permission.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startLocationFlow());
+  }
 
-    _initializeLocation();
+  /// Google Play requires a prominent, in-context disclosure explaining what
+  /// location data is collected and why, shown before the permission prompt.
+  Future<void> _startLocationFlow() async {
+    final prefs = await SharedPreferences.getInstance();
+    final accepted = prefs.getBool(_locationDisclosureKey) ?? false;
+
+    if (!accepted) {
+      if (!mounted) return;
+      final agreed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Location access'),
+          content: const Text(
+            'Apna Charge uses your device location to find EV charging '
+            'stations near you and along your routes. Your coordinates are '
+            'sent to our mapping and charging-data providers to return '
+            'results, and are used only while you use the app.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Not now'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+      if (agreed != true) return; // User declined; don't request location.
+      await prefs.setBool(_locationDisclosureKey, true);
+    }
+
+    await _initializeLocation();
   }
 
   Future<void> _initializeLocation() async {
