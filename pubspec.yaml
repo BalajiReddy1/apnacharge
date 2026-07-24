@@ -47,6 +47,7 @@ dependencies:
   flutter_native_splash: ^2.4.4
   supabase_flutter: ^2.8.4
   package_info_plus: ^8.1.2
+  google_sign_in: ^6.2.2
 
 dev_dependencies:
   flutter_test:

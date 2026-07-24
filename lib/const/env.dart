@@ -22,4 +22,11 @@ class Env {
 
   /// Mapbox public access token (used once we migrate the map layer).
   static String get mapboxAccessToken => _get('MAPBOX_ACCESS_TOKEN');
+
+  /// Google OAuth Web client ID — used as the Supabase server client ID for
+  /// native Google Sign-In (required on both Android and iOS).
+  static String get googleWebClientId => _get('GOOGLE_WEB_CLIENT_ID');
+
+  /// Google OAuth iOS client ID — required for Google Sign-In on iOS only.
+  static String get googleIosClientId => _get('GOOGLE_IOS_CLIENT_ID');
 }
