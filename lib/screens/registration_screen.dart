@@ -1,6 +1,7 @@
 import 'package:ev_app/const/colors.dart';
 import 'package:ev_app/screens/legal_document_screen.dart';
 import 'package:ev_app/utils/validators.dart';
+import 'package:ev_app/widgets/forgot_password_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -22,9 +23,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   String _errorMessage = '';
 
   void _forgotPassword() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Forgot Password tapped")),
-    );
+    showForgotPasswordSheet(context,
+        initialEmail: _emailController.text.trim());
   }
 
   Widget _legalLink(String label, String title, String assetPath) {

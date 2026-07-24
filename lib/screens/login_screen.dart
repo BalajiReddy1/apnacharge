@@ -1,6 +1,7 @@
 import 'package:ev_app/const/colors.dart';
 import 'package:ev_app/screens/registration_screen.dart';
 import 'package:ev_app/utils/validators.dart';
+import 'package:ev_app/widgets/forgot_password_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -19,10 +20,8 @@ class _LoginScreenState extends State<LoginScreen> {
   String _errorMessage = '';
 
   void _forgotPassword() {
-    // Handle forgot password action (dummy for now)
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Forgot Password tapped')),
-    );
+    showForgotPasswordSheet(context,
+        initialEmail: _emailController.text.trim());
   }
 
   Future<void> _login() async {
