@@ -3,6 +3,9 @@
 *.env
 !.env.example
 
+# Local AI/session handoff notes (not part of the product)
+PROJECT_CONTEXT.md
+
 # Miscellaneous
 *.class
 *.log
