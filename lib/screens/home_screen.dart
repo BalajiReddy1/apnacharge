@@ -21,14 +21,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:ev_app/widgets/places_autocomplete.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({Key? key}) : super(key: key);
+  const HomePage({super.key});
 
   @override
-  _HomePageState createState() => _HomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  late GoogleMapController _mapController;
+  GoogleMapController? _mapController;
   LocationData? _currentLocation;
   final Location _locationService = Location();
   final Set<Marker> _markers = {};
@@ -216,7 +216,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _openStation(ChargingStationDetails station) {
-    _mapController.animateCamera(
+    _mapController?.animateCamera(
       CameraUpdate.newLatLng(LatLng(station.latitude, station.longitude)),
     );
     _showStationBottomSheet(station);
@@ -249,7 +249,7 @@ class _HomePageState extends State<HomePage> {
               .apiKey, // Assuming _placesService holds your API key
           onPlaceSelected: (placeId, description, LatLng latLng) {
             // Use the selected location to recenter the map
-            _mapController.animateCamera(
+            _mapController?.animateCamera(
               CameraUpdate.newLatLng(latLng),
             );
             // Optionally re-fetch charging stations for the new location:
@@ -262,12 +262,14 @@ class _HomePageState extends State<HomePage> {
 
   // Launch directions in Google Maps using a URL scheme.
   Future<void> _openDirections(double lat, double lng) async {
-    final url = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng';
-    if (await canLaunch(url)) {
-      await launch(url);
-    } else {
+    final uri =
+        Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+    final launched =
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not launch directions.')));
+        const SnackBar(content: Text('Could not launch directions.')),
+      );
     }
   }
 
@@ -280,8 +282,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onCameraIdle() async {
-    if (_mapController != null) {
-      LatLngBounds bounds = await _mapController.getVisibleRegion();
+    final controller = _mapController;
+    if (controller != null) {
+      LatLngBounds bounds = await controller.getVisibleRegion();
       double centerLat =
           (bounds.northeast.latitude + bounds.southwest.latitude) / 2;
       double centerLng =
@@ -432,7 +435,7 @@ class _HomePageState extends State<HomePage> {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.12),
+                            color: Colors.black.withValues(alpha: 0.12),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
@@ -501,7 +504,7 @@ class _HomePageState extends State<HomePage> {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 8,
                 offset: const Offset(0, -2),
               ),
@@ -609,7 +612,7 @@ class _HomePageState extends State<HomePage> {
   /// Animate the map back to the user's current location.
   Future<void> _recenterToMyLocation() async {
     if (_currentLocation == null) return;
-    _mapController.animateCamera(
+    _mapController?.animateCamera(
       CameraUpdate.newLatLng(
         LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
       ),
@@ -829,8 +832,8 @@ class _StationDetailsSheetState extends State<_StationDetailsSheet> {
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: operational
-                      ? Colors.green.withOpacity(0.12)
-                      : Colors.red.withOpacity(0.12),
+                      ? Colors.green.withValues(alpha: 0.12)
+                      : Colors.red.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(

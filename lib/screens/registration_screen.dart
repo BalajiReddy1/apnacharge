@@ -8,10 +8,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RegistrationScreen extends StatefulWidget {
-  const RegistrationScreen({Key? key}) : super(key: key);
+  const RegistrationScreen({super.key});
 
   @override
-  _RegistrationScreenState createState() => _RegistrationScreenState();
+  State<RegistrationScreen> createState() => _RegistrationScreenState();
 }
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
@@ -290,8 +290,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ],
               ),
             ),
-            // Bottom section: Use a fixed-height container with a Stack.
-            Container(
+            // Bottom section: Use a fixed-height box with a Stack.
+            SizedBox(
               height: 240, // Fixed height for the bottom section.
               child: Stack(
                 children: [
@@ -314,7 +314,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         // Circular Go button.
-                        Container(
+                        SizedBox(
                           height: 65,
                           width: 220,
                           child: ElevatedButton(
@@ -322,7 +322,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.darkestbg,
                               disabledBackgroundColor:
-                                  AppColors.darkestbg.withOpacity(0.6),
+                                  AppColors.darkestbg.withValues(alpha: 0.6),
                               padding: const EdgeInsets.all(20),
                             ),
                             child: _isLoading

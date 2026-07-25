@@ -7,8 +7,7 @@ import 'package:flutter/material.dart';
 class GoogleSignInButton extends StatefulWidget {
   final VoidCallback onSignedIn;
 
-  const GoogleSignInButton({Key? key, required this.onSignedIn})
-      : super(key: key);
+  const GoogleSignInButton({super.key, required this.onSignedIn});
 
   @override
   State<GoogleSignInButton> createState() => _GoogleSignInButtonState();

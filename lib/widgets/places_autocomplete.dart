@@ -11,13 +11,13 @@ class PlacesAutocomplete extends StatefulWidget {
       onPlaceSelected;
 
   const PlacesAutocomplete({
-    Key? key,
+    super.key,
     required this.apiKey,
     required this.onPlaceSelected,
-  }) : super(key: key);
+  });
 
   @override
-  _PlacesAutocompleteState createState() => _PlacesAutocompleteState();
+  State<PlacesAutocomplete> createState() => _PlacesAutocompleteState();
 }
 
 class _PlacesAutocompleteState extends State<PlacesAutocomplete> {
@@ -65,6 +65,7 @@ class _PlacesAutocompleteState extends State<PlacesAutocomplete> {
       if (detailsData['status'] == 'OK') {
         final lat = detailsData['result']['geometry']['location']['lat'];
         final lng = detailsData['result']['geometry']['location']['lng'];
+        if (!mounted) return;
         widget.onPlaceSelected(
             placeId, suggestion['description'], LatLng(lat, lng));
         Navigator.pop(context); // Close the autocomplete dialog/screen

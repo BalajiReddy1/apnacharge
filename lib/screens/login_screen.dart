@@ -8,8 +8,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
@@ -203,13 +205,13 @@ class _LoginScreenState extends State<LoginScreen> {
             // "Go" Button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 70.0),
-              child: Container(
+              child: SizedBox(
                 height: 65,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _login,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.medgreen,
-                    disabledBackgroundColor: AppColors.medgreen.withOpacity(0.5),
+                    disabledBackgroundColor: AppColors.medgreen.withValues(alpha: 0.5),
                     padding: EdgeInsets.symmetric(vertical: 16.0),
                   ),
                   child: _isLoading

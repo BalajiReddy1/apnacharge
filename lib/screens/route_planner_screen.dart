@@ -12,10 +12,10 @@ import 'package:http/http.dart' as http;
 import 'package:location/location.dart';
 
 class RoutePlannerScreen extends StatefulWidget {
-  const RoutePlannerScreen({Key? key}) : super(key: key);
+  const RoutePlannerScreen({super.key});
 
   @override
-  _RoutePlannerScreenState createState() => _RoutePlannerScreenState();
+  State<RoutePlannerScreen> createState() => _RoutePlannerScreenState();
 }
 
 class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
@@ -453,7 +453,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.medgreen.withOpacity(0.10),
+        color: AppColors.medgreen.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(

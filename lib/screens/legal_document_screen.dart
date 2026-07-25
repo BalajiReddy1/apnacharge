@@ -12,10 +12,10 @@ class LegalDocumentScreen extends StatelessWidget {
   final String assetPath;
 
   const LegalDocumentScreen({
-    Key? key,
+    super.key,
     required this.title,
     required this.assetPath,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -122,7 +122,7 @@ class LegalDocumentScreen extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.08),
+        color: Colors.green.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
         border: const Border(
           left: BorderSide(color: Colors.green, width: 3),

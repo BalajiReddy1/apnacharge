@@ -94,7 +94,7 @@ class _StationFilterSheetState extends State<_StationFilterSheet> {
               return FilterChip(
                 label: Text(c),
                 selected: selected,
-                selectedColor: AppColors.medgreen.withOpacity(0.2),
+                selectedColor: AppColors.medgreen.withValues(alpha: 0.2),
                 checkmarkColor: AppColors.darkgreen,
                 onSelected: (on) {
                   setState(() {
@@ -119,7 +119,7 @@ class _StationFilterSheetState extends State<_StationFilterSheet> {
               return ChoiceChip(
                 label: Text(e.key),
                 selected: selected,
-                selectedColor: AppColors.medgreen.withOpacity(0.2),
+                selectedColor: AppColors.medgreen.withValues(alpha: 0.2),
                 onSelected: (_) => setState(() => _minPower = e.value),
               );
             }).toList(),
@@ -127,7 +127,7 @@ class _StationFilterSheetState extends State<_StationFilterSheet> {
           const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            activeColor: AppColors.medgreen,
+            activeThumbColor: AppColors.medgreen,
             title: const Text('Hide out-of-service stations'),
             value: _hideOutOfService,
             onChanged: (v) => setState(() => _hideOutOfService = v),

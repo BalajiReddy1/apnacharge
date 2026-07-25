@@ -45,6 +45,14 @@ flutter pub get
 
 ## 🔑 Environment Variables
 
+> **Do this first after cloning.** `.env` is git-ignored, so a fresh clone
+> doesn't have it — and the build **fails** with
+> `The asset file '.env' doesn't exist` until you create it:
+>
+> ```bash
+> cp .env.example .env      # Windows: copy .env.example .env
+> ```
+
 All secrets live in a git-ignored `.env` file (loaded via `flutter_dotenv`).
 Never commit real keys.
 
