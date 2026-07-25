@@ -45,6 +45,10 @@ class GoogleAuthService {
         throw GoogleAuthException('No ID token returned by Google.');
       }
 
+      // signInWithIdToken is marked experimental by supabase_flutter, but it is
+      // the documented approach for native Google sign-in on mobile. Revisit if
+      // the SDK changes this API.
+      // ignore: experimental_member_use
       await Supabase.instance.client.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
